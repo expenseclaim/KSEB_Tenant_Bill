@@ -240,7 +240,7 @@ const esc = t => String(t??"").replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;","
 
 /* ---------- storage ---------- */
 function load(){
-  try{ const raw=localStorage.getItem(KEY); if(raw){ const d=JSON.parse(raw); state={settings:{...DEFAULTS,...(d.settings||{})}, months:d.months||{}}; } }catch(e){}
+  try{ const raw=localStorage.getItem(KEY); if(raw){ const d=JSON.parse(raw); state={settings:{...DEFAULTS,...(d.settings||{})}, months:d.months||{}}; Object.values(state.months).forEach(m=>{ if(m.adj && m.adj.v!==2) delete m.adj; }); } }catch(e){}
 }
 function save(){ try{ localStorage.setItem(KEY, JSON.stringify(state)); }catch(e){ logLine("Could not save on this device: browser storage is blocked.", false); } }
 
@@ -257,36 +257,58 @@ function parseKseb(text){
   r.zones={};
   const re=/KWH\s+(Normal|Off Peak|Peak)\s+(Import|Export)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+(\d+)/g;
   while((m=re.exec(t))){ const z={"Normal":"N","Off Peak":"O","Peak":"P"}[m[1]]; (r.zones[z] = r.zones[z]||{})[m[2]==="Import"?"imp":"exp"]=+m[6]; }
-  r.adj=[];
-  const i=t.indexOf("Consumption Adjustment Report");
-  if(i>=0){
-    const tok=t.slice(i).split(" "); let mon=null, con=null;
-    const isNum=s=>/^-?\d+(\.\d+)?$/.test(s);
-    for(let k=0;k<tok.length;k++){
-      const s=tok[k];
-      if(/^20\d{4}$/.test(s)){ mon=s.slice(0,4)+"-"+s.slice(4); continue; }
-      if(/^\d{5}$/.test(s)){ con=s; continue; }
-      const nx=tok.slice(k+1,k+8);
-      if(/^[NPO]$/.test(s) && mon && con && nx.length===7 && nx.every(isNum)){
-        const v=nx.map(Number);
-        r.adj.push({month:mon,cons:con,zone:s,imp:v[0],adjusted:v[4],billed:v[5]});
-        k+=7;
-      }
-    }
-  }
   return r;
+}
+function parseReport(items){
+  // items: [{s,x,y}] y grows downward. Order-independent.
+  const tok=[];
+  items.forEach(it=>String(it.s).trim().split(/\s+/).forEach((s,i)=>{ if(s) tok.push({s, x:it.x+i*0.01, y:it.y}); }));
+  const isNum=s=>/^-?\d+(\.\d+)?$/.test(s);
+  const zones=tok.filter(t=>/^[NPO]$/.test(t.s));
+  if(!zones.length) return [];
+  const zx=Math.min(...zones.map(z=>z.x));
+  const rows=[];
+  zones.forEach(z=>{
+    const nums=tok.filter(t=>Math.abs(t.y-z.y)<3 && t.x>z.x && isNum(t.s)).sort((a,b)=>a.x-b.x);
+    if(nums.length>=7){ const v=nums.slice(0,7).map(t=>+t.s); rows.push({zone:z.s,y:z.y,imp:v[0],exp:v[1],expBank:v[2],solar:v[3],adjusted:v[4],billed:v[5],banked:v[6]}); }
+  });
+  rows.sort((a,b)=>a.y-b.y);
+  const left=tok.filter(t=>t.x<zx-2);
+  const months=left.filter(t=>/^20\d{4}$/.test(t.s));
+  const cons=left.filter(t=>/^\d{5}$/.test(t.s));
+  const near=(arr,y)=>arr.reduce((b,t)=>!b||Math.abs(t.y-y)<Math.abs(b.y-y)?t:b,null);
+  const out=[];
+  for(let i=0;i+2<rows.length;i+=3){
+    const tri=rows.slice(i,i+3);
+    if(new Set(tri.map(r=>r.zone)).size!==3) continue;
+    const mid=tri[1].y, cy=(tri[0].y+tri[2].y)/2;
+    const c=near(cons,mid), m=near(months,cy);
+    if(!c||!m) continue;
+    const valid=tri.every(r=>Math.abs(r.banked-(r.solar-r.adjusted))<1.01 && r.solar<=r.expBank+0.01);
+    if(!valid) continue;
+    tri.forEach(r=>out.push({month:m.s.slice(0,4)+"-"+m.s.slice(4),cons:c.s,zone:r.zone,imp:r.imp,adjusted:r.adjusted,billed:r.billed}));
+  }
+  return out;
 }
 async function pdfText(file){
   if(!window.pdfjsLib) throw new Error("PDF reader did not load. Check your internet connection and reload.");
   const buf = await file.arrayBuffer();
   const doc = await pdfjsLib.getDocument({data:buf}).promise;
-  let out = [];
+  const texts=[], pages=[];
   for(let p=1;p<=doc.numPages;p++){
     const page = await doc.getPage(p);
+    const h = page.getViewport({scale:1}).height;
     const c = await page.getTextContent();
-    out.push(c.items.map(it=>it.str).join(" "));
+    const items = c.items.filter(it=>it.str&&it.str.trim()).map(it=>({s:it.str, x:it.transform[4], y:h-it.transform[5]}));
+    pages.push(items); texts.push(c.items.map(it=>it.str).join(" "));
   }
-  return out.join(" ");
+  return {text:texts.join(" "), pages};
+}
+function readBill(pdf){
+  const r = parseKseb(pdf.text);
+  const rp = pdf.pages.find(items=>items.some(it=>/Consumption/.test(it.s)) && items.some(it=>/Adjustment/.test(it.s)));
+  r.adj = rp ? parseReport(rp) : [];
+  return r;
 }
 function mergeBill(r, fname){
   const s = state.settings;
@@ -294,7 +316,7 @@ function mergeBill(r, fname){
   // adjustment report rows for the tenant (may cover 2 months)
   const byMonth = {};
   r.adj.filter(a=>a.cons===tSuffix).forEach(a=>{
-    const b = byMonth[a.month] = byMonth[a.month] || {adjusted:0,billed:0,N:0,O:0,P:0};
+    const b = byMonth[a.month] = byMonth[a.month] || {v:2,adjusted:0,billed:0,N:0,O:0,P:0};
     b.adjusted += a.adjusted; b.billed += a.billed; b[a.zone] = a.imp;
   });
   Object.entries(byMonth).forEach(([k,v])=>{ const mo = state.months[k] = state.months[k]||{}; mo.adj = v; });
@@ -316,7 +338,7 @@ async function handleFiles(files){
   if(!list.length){ logLine("Choose PDF files downloaded from KSEB.", false); return; }
   $("log").innerHTML=""; let last=null;
   for(const f of list){
-    try{ const res = mergeBill(parseKseb(await pdfText(f)), f.name); logLine(res.msg, res.ok); if(res.month && (!last || res.month>last)) last=res.month; }
+    try{ const res = mergeBill(readBill(await pdfText(f)), f.name); logLine(res.msg, res.ok); if(res.month && (!last || res.month>last)) last=res.month; }
     catch(e){ logLine(`${f.name}: ${e.message||"could not be read"}`, false); }
   }
   if(last) selected=last;
@@ -329,11 +351,12 @@ function resolve(k){
   const m = state.months[k]||{}, man = m.manual||{}, s = state.settings;
   let solar=null, src="", zones=null, billed=0;
   if(m.tenant) zones={N:m.tenant.N,O:m.tenant.O,P:m.tenant.P}; else if(m.adj) zones={N:m.adj.N,O:m.adj.O,P:m.adj.P};
-  if(m.adj){ billed=m.adj.billed; }
+  const meter = m.tenant ? m.tenant.N+m.tenant.O+m.tenant.P : null;
+  if(m.adj && (meter==null || Math.abs(m.adj.adjusted+m.adj.billed-meter)<=1)) billed=m.adj.billed;
   if(num(man.billed)!=null) billed=num(man.billed);
   if(num(man.units)!=null){ solar=num(man.units); src="entered by you"; }
+  else if(meter!=null){ solar=Math.max(0, meter-billed); src="tenant meter reading"; }
   else if(m.adj){ solar=m.adj.adjusted; src="KSEB adjustment report"; }
-  else if(m.tenant){ solar=Math.max(0, m.tenant.N+m.tenant.O+m.tenant.P-billed); src="tenant meter reading"; }
   let wheeling=null, wSrc="";
   if(num(man.wheeling)!=null){ wheeling=num(man.wheeling); wSrc="entered by you"; }
   else if(m.owner && m.owner.wheeling!=null){ wheeling=m.owner.wheeling; wSrc="your KSEB bill"; }
