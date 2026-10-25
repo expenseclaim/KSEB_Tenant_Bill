@@ -129,6 +129,26 @@ dialog::backdrop{background:rgba(10,20,18,.45)}
 .msec{margin-top:30px;padding-top:20px;border-top:2px solid var(--line)}
 .msec h3{margin:0 0 10px;font-size:1.15rem}
 .msec h3 span{font-weight:400;color:var(--muted);font-size:.9rem;margin-left:6px}
+details.tariff{margin:4px 0 10px;font-size:.88rem}
+details.tariff summary{cursor:pointer;color:var(--teal);font-weight:600;padding:4px 0}
+#tariffEd p{margin:10px 0 4px;color:var(--muted)}
+#tariffEd table{width:100%;table-layout:fixed}
+[hidden]{display:none !important}
+#tariffEd th,#tariffEd td{padding:4px 6px;text-align:left}
+#tariffEd input{padding:5px 8px;text-align:right}
+#tariffEd .muted{color:var(--muted)}
+details.tariff button{margin-top:8px;font-size:.82rem;padding:6px 10px}
+.tt{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.tt p{font-size:.85rem;color:var(--muted);margin:0 0 6px}
+.tt table{width:100%}
+@media (max-width:600px){.tt{grid-template-columns:1fr}}
+.stmt table.tariff-t{min-width:480px;width:100%}
+.tariff-t td:nth-child(n+2),.tariff-t th:nth-child(n+2){text-align:right}
+.tariff-t tr.grp td{text-align:left;background:var(--bg);color:var(--muted);font-size:.82rem;font-weight:600}
+.tariff-t tr.used td{background:var(--sun-soft);font-weight:700}
+.tariff-t tr.used td:first-child{box-shadow:inset 4px 0 0 var(--sun)}
+.tariff-t tfoot td{font-weight:800}
+.tariff-t tfoot td:first-child{text-align:left}
 #printArea{display:none}
 @media print{
   :root{--bg:#fff;--surface:#fff;--ink:#000;--muted:#444;--line:#bbb;--sun-soft:#f1f1f1;color-scheme:light}
@@ -136,6 +156,8 @@ dialog::backdrop{background:rgba(10,20,18,.45)}
   .wrap,dialog{display:none !important}
   #printArea{display:block}
   #printArea .stmt{padding:0}
+  *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .tariff-t tr.used td{background:#f6e3b4 !important}
   .msec{break-before:page;border-top:0;margin-top:0}
   .stmt table.rep{min-width:0}
 }
@@ -182,7 +204,9 @@ dialog::backdrop{background:rgba(10,20,18,.45)}
       <h3>Agreement and rates</h3>
       <label class="field"><span>Tenant name<small>Shown on the statement</small></span><input type="text" id="sName"></label>
       <label class="field"><span>Monthly amount (₹)<small>Fixed amount tenant pays you</small></span><input type="number" id="sFixed" step="1" min="0"></label>
-      <label class="field"><span>Value per unit (₹)<small>Rate for units above the monthly amount</small></span><input type="number" id="sRate" step="0.01" min="0"></label>
+      <label class="field"><span>Price units by</span><select id="sPricing"><option value="tariff">KSEB tariff</option><option value="flat">Flat rate</option></select></label>
+      <label class="field" id="rateRow"><span>Value per unit (₹)<small>Flat rate for every unit</small></span><input type="number" id="sRate" step="0.01" min="0"></label>
+      <details class="tariff" id="tariffBox"><summary>KSEB tariff rates</summary><div id="tariffEd"></div><button type="button" id="btnTariffReset" class="ghost">Reset to default rates</button></details>
       <label class="field"><span>Wheeling rate (₹/unit)<small>Used only when your bill for that month is missing</small></span><input type="number" id="sWheel" step="0.0001" min="0"></label>
       <label class="check"><input type="checkbox" id="sAddWheel"><span>Charge wheeling to tenant on top</span></label>
       <label class="check"><input type="checkbox" id="sLoss"><span>Count 5% transfer loss (tenant gets 0.95 unit per unit taken from your bank)</span></label>
@@ -250,7 +274,7 @@ dialog::backdrop{background:rgba(10,20,18,.45)}
 (function(){
 "use strict";
 const KEY = "tenantSolarApp.v1";
-const DEFAULTS = {ownerNo:"1145140014489", tenantNo:"1145148015204", tenantName:"Tenant", fixed:2000, rate:7, wheelRate:0.6736, addWheeling:true, loss:false, addTenantBill:false};
+const DEFAULTS = {ownerNo:"1145140014489", tenantNo:"1145148015204", tenantName:"Tenant", fixed:2000, rate:7, pricing:"tariff", tariff:{tele:[{upto:50,rate:3.35},{upto:100,rate:4.25},{upto:150,rate:5.35},{upto:200,rate:7.20},{upto:250,rate:8.50}], flat:[{upto:300,rate:6.75},{upto:350,rate:7.60},{upto:400,rate:7.95},{upto:500,rate:8.25},{upto:null,rate:9.20}]}, wheelRate:0.6736, addWheeling:true, loss:false, addTenantBill:false};
 let state = {settings:{...DEFAULTS}, months:{}};
 let selected = null;
 const $ = id => document.getElementById(id);
@@ -265,7 +289,7 @@ const esc = t => String(t??"").replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;","
 
 /* ---------- storage ---------- */
 function load(){
-  try{ const raw=localStorage.getItem(KEY); if(raw){ const d=JSON.parse(raw); state={settings:{...DEFAULTS,...(d.settings||{})}, months:d.months||{}}; Object.values(state.months).forEach(m=>{ if(m.adj && m.adj.v!==2) delete m.adj; }); } }catch(e){}
+  try{ const raw=localStorage.getItem(KEY); if(raw){ const d=JSON.parse(raw); state={settings:{...DEFAULTS,...(d.settings||{})}, months:d.months||{}}; if(!d.settings||!d.settings.pricing){ state.settings.pricing="tariff"; state.settings.tariff=JSON.parse(JSON.stringify(DEFAULTS.tariff)); } Object.values(state.months).forEach(m=>{ if(m.adj && m.adj.v!==2) delete m.adj; }); } }catch(e){}
 }
 function save(){ try{ localStorage.setItem(KEY, JSON.stringify(state)); }catch(e){ logLine("Could not save on this device: browser storage is blocked.", false); } }
 
@@ -389,19 +413,47 @@ function resolve(k){
   const tbill = num(man.tbill)!=null ? num(man.tbill) : (m.tenant&&m.tenant.total!=null ? m.tenant.total : null);
   return {m, solar, src, zones, billed, wheeling, wSrc, tbill};
 }
+const fu = u => Number.isInteger(u) ? String(u) : u.toFixed(1);
+function energyCost(u){
+  const s=state.settings;
+  if(s.pricing!=="tariff"){ const r=+s.rate||0; return {cost:u*r, desc:`${fu(u)} units × ${rs(r)}`, short:`at ${rs(r)} per unit`}; }
+  const T=s.tariff, lim=T.tele[T.tele.length-1].upto;
+  if(u<=lim){
+    let prev=0, cost=0; const parts=[];
+    for(const sl of T.tele){ if(u<=prev) break; const q=Math.min(u,sl.upto)-prev; cost+=q*sl.rate; parts.push(`${fu(q)} × ${rs(sl.rate)}`); prev=sl.upto; }
+    return {cost, desc:parts.join(" + "), short:"at KSEB slab rates (up to "+lim+" units)"};
+  }
+  let prevU=lim;
+  for(const sl of T.flat){
+    if(sl.upto==null || u<=sl.upto){ const range = sl.upto==null ? `above ${prevU} units` : `${prevU+1}–${sl.upto} units`;
+      return {cost:u*sl.rate, desc:`${fu(u)} units × ${rs(sl.rate)}`, short:`at ${rs(sl.rate)} per unit (${range} slab)`, range, rate:sl.rate}; }
+    prevU=sl.upto;
+  }
+  return {cost:0,desc:"",short:""};
+}
+let covCache={key:null,val:0};
+function coveredUnits(){
+  const s=state.settings, key=JSON.stringify([s.pricing,s.rate,s.fixed,s.tariff]);
+  if(covCache.key===key) return covCache.val;
+  let best=0;
+  if(s.pricing!=="tariff") best = (+s.rate>0) ? (+s.fixed)/(+s.rate) : 0;
+  else for(let u=1;u<=5000;u++) if(energyCost(u).cost<=(+s.fixed||0)) best=u;
+  covCache={key,val:best}; return best;
+}
 function calc(k){
   const s=state.settings, r=resolve(k);
   const fixed=+s.fixed||0, rate=+s.rate||0;
   const solar=r.solar||0;
   const units = s.loss ? solar/0.95 : solar;
-  const value = units*rate;
-  const covered = rate>0 ? fixed/rate : 0;
+  const ec = energyCost(units);
+  const value = ec.cost;
+  const covered = coveredUnits();
   const overUnits = Math.max(0, units-covered);
   const overValue = Math.max(0, value-fixed);
   const wheel = s.addWheeling ? (r.wheeling||0) : 0;
   const tb = s.addTenantBill ? (r.tbill||0) : 0;
   const extra = Math.round(overValue + wheel + tb);
-  return {...r, fixed, rate, units, value, covered, overUnits, overValue, wheel, tb, extra, total:fixed+extra};
+  return {...r, fixed, rate, ec, units, value, covered, overUnits, overValue, wheel, tb, extra, total:fixed+extra};
 }
 const keys = () => Object.keys(state.months).filter(k=>{ const m=state.months[k]; return m.owner||m.tenant||m.adj||m.manual; }).sort().reverse();
 
@@ -411,6 +463,12 @@ function render(){
   $("chOwner").textContent=s.ownerNo; $("chTenant").textContent=s.tenantNo;
   $("sName").value=s.tenantName; $("sFixed").value=s.fixed; $("sRate").value=s.rate; $("sWheel").value=s.wheelRate;
   $("sAddWheel").checked=!!s.addWheeling; $("sLoss").checked=!!s.loss; $("sTenantBill").checked=!!s.addTenantBill;
+  $("sPricing").value=s.pricing; $("rateRow").hidden=s.pricing==="tariff"; $("tariffBox").hidden=s.pricing!=="tariff";
+  if(!document.activeElement || !$("tariffEd").contains(document.activeElement)){
+    const T=s.tariff, row=(g,sl,i,last)=>`<tr><td>${last?`<span class="muted">above</span>`:`<input type="number" data-g="${g}" data-i="${i}" data-f="upto" value="${sl.upto}" aria-label="Up to units">`}</td><td><input type="number" step="0.01" data-g="${g}" data-i="${i}" data-f="rate" value="${sl.rate}" aria-label="Rate"></td></tr>`;
+    $("tariffEd").innerHTML=`<p>Slab-wise (each slab its own rate)</p><table><thead><tr><th>Up to units</th><th>₹/unit</th></tr></thead><tbody>${T.tele.map((sl,i)=>row("tele",sl,i,false)).join("")}</tbody></table>
+      <p>Above that: one rate for every unit</p><table><thead><tr><th>Up to units</th><th>₹/unit</th></tr></thead><tbody>${T.flat.map((sl,i)=>row("flat",sl,i,sl.upto==null)).join("")}</tbody></table>`;
+  }
   $("sOwner").value=s.ownerNo; $("sTenant").value=s.tenantNo;
   const ks=keys();
   if(!ks.includes(selected)) selected=ks[0]||null;
@@ -436,7 +494,7 @@ function renderCard(){
   $("bOver").style.left=(c.covered/scale*100)+"%"; $("bOver").style.width=(c.overUnits/scale*100)+"%";
   $("bMark").style.left=`calc(${c.covered/scale*100}% - 1px)`;
   $("lgUsed").textContent=Math.round(c.units)+" units used"+(s.loss?" incl. 5% loss":"");
-  $("lgCov").textContent=rs(c.fixed,0)+" covers "+Math.floor(c.covered)+" units";
+  $("lgCov").textContent=rs(c.fixed,0)+" covers up to "+Math.floor(c.covered)+" units";
   const w=[];
   if(c.solar==null) w.push("Tenant units not found. Upload the tenant’s bill or your bill for this month.");
   if(!c.m.owner && c.wSrc==="estimate") w.push("Your bill for this month is not uploaded, so the wheeling charge is an estimate.");
@@ -445,9 +503,9 @@ function renderCard(){
   const rows=[
     ["Tenant units from your solar", c.solar!=null?`${c.solar} units`:"Not found"],
     ...(s.loss?[["Units counted with 5% loss", c.units.toFixed(1)+" units"]]:[]),
-    [`Value at ${rs(c.rate)} per unit`, rs(c.value)],
+    [`Value ${c.ec.short}`, rs(c.value)],
     ["Covered by monthly amount", "− "+rs(Math.min(c.value,c.fixed))],
-    [`Above the limit (${c.overUnits.toFixed(1)} units)`, rs(c.overValue)],
+    [`Above ${rs(c.fixed,0)}`, rs(c.overValue)],
     [`Wheeling charge${s.addWheeling?"":" (not charged)"}${c.wSrc==="estimate"?" (estimate)":""}`, rs(c.wheeling)],
     ...(s.addTenantBill?[["Tenant’s KSEB bill", c.tbill!=null?rs(c.tbill):"Not uploaded"]]:[]),
   ];
@@ -484,10 +542,14 @@ function stmtParts(k){
   steps.push(`KSEB supplied <b>${c.solar} units</b> of this from the owner’s rooftop solar (shown as “Adjusted from bank” in KSEB’s Consumption Adjustment Report). That is why your KSEB bill has no energy charge.`
     + (c.billed>0?` The remaining ${c.billed} units were billed to you directly by KSEB and are not included here.`:""));
   if(s.loss) steps.push(`KSEB gives your connection 0.95 unit for every unit taken from the owner’s solar bank, so ${c.solar} units used ${c.units.toFixed(1)} units of the owner’s solar.`);
-  steps.push(`Your monthly payment of <b>${rs(c.fixed,0)}</b> (already paid) covers solar units up to ${rs(c.fixed,0)} ÷ ${rs(c.rate)} = <b>${c.covered.toFixed(1)} units</b>.`);
-  steps.push(c.overUnits>0
-    ? `Units above that: ${c.units.toFixed(1)} − ${c.covered.toFixed(1)} = ${c.overUnits.toFixed(1)} units × ${rs(c.rate)} = <b>${rs(c.overValue)}</b>.`
-    : `${Math.round(c.units)} units is within the ${c.covered.toFixed(1)} units covered, so there is no extra charge for units.`);
+  steps.push(s.pricing==="tariff"
+    ? (c.units>s.tariff.tele[s.tariff.tele.length-1].upto
+        ? `At the KSEB domestic tariff, a month above ${s.tariff.tele[s.tariff.tele.length-1].upto} units is charged at one rate for every unit. ${fu(c.units)} units falls in the ${c.ec.range} slab: ${c.ec.desc} = <b>${rs(c.value)}</b>.`
+        : `At the KSEB domestic tariff (slab-wise up to ${s.tariff.tele[s.tariff.tele.length-1].upto} units): ${c.ec.desc} = <b>${rs(c.value)}</b>.`)
+    : `Value of the units: ${c.ec.desc} = <b>${rs(c.value)}</b>.`);
+  steps.push(c.overValue>0
+    ? `Your monthly payment of <b>${rs(c.fixed,0)}</b> (already paid) covers this up to ${Math.floor(c.covered)} units. Extra for units: ${rs(c.value)} − ${rs(c.fixed,0)} = <b>${rs(c.overValue)}</b>.`
+    : `This is within your monthly payment of <b>${rs(c.fixed,0)}</b> (already paid), so there is no extra charge for units.`);
   if(s.addWheeling) steps.push(`KSEB charges the owner a wheeling charge for transferring solar units to your connection. This month it is <b>${rs(c.wheeling)}</b>${c.wSrc==="your KSEB bill"?` on the owner’s KSEB bill ${esc(c.m.owner.billNo)}`:c.wSrc==="estimate"?" (estimated at "+rs(s.wheelRate,4)+" per unit)":""}, passed on at actual cost.`);
   if(s.addTenantBill) steps.push(`Your own KSEB bill (fixed charge and meter rent)${c.m.tenant?` ${esc(c.m.tenant.billNo)}`:""} paid by the owner: <b>${rs(c.tbill||0)}</b>.`);
   const src=[];
@@ -499,8 +561,9 @@ function stmtParts(k){
 function detailHTML(k){
   const {steps, src, c, s} = stmtParts(k);
   return `<ol>${steps.map(x=>`<li>${x}</li>`).join("")}</ol>
+    ${s.pricing==="tariff"?tariffTable(c.units):""}
     <div class="sum">
-      <div class="row"><span>Units above the limit</span><span>${rs(c.overValue)}</span></div>
+      <div class="row"><span>Extra for units</span><span>${rs(c.overValue)}</span></div>
       ${s.addWheeling?`<div class="row"><span>Wheeling charge</span><span>${rs(c.wheeling)}</span></div>`:""}
       ${s.addTenantBill?`<div class="row"><span>Your KSEB bill</span><span>${rs(c.tbill||0)}</span></div>`:""}
       <div class="row"><span>Extra to pay</span><span>${rs(c.extra,0)}</span></div>
@@ -517,33 +580,69 @@ function statementHTML(k){
     <p class="foot">The monthly ${rs(s.fixed,0)} is paid separately and is not included above. Extra amount rounded to the nearest rupee. Copies of the KSEB bills are available on request.</p>
   </div>`;
 }
+function rateUsed(c){
+  const s=state.settings;
+  if(s.pricing!=="tariff") return rs(s.rate)+"/unit";
+  if(c.ec.rate!=null) return rs(c.ec.rate)+" (all units)";
+  return "Slab rates";
+}
+function tariffText(u){
+  const T=state.settings.tariff, lim=T.tele[T.tele.length-1].upto; let p=0,q=lim; const L=["","KSEB domestic tariff:",`Up to ${lim} units, each slab at its own rate:`];
+  T.tele.forEach(sl=>{ const used=u!=null&&u<=lim&&u>p; L.push(`  ${p===0?"First "+sl.upto:(p+1)+"-"+sl.upto}: ${rs(sl.rate)}${used?`  <- ${fu(Math.min(u,sl.upto)-p)} units used`:""}`); p=sl.upto; });
+  L.push(`Above ${lim} units, one rate for every unit:`);
+  T.flat.forEach(sl=>{ const used=u!=null&&u>lim&&u>q&&(sl.upto==null||u<=sl.upto); L.push(`  ${sl.upto==null?"Above "+q:(q+1)+"-"+sl.upto}: ${rs(sl.rate)}${used?"  <- your rate":""}`); q=sl.upto; });
+  return L;
+}
 function reportHTML(ks){
   const s=state.settings;
-  let tu=0,tov=0,tw=0,tt=0,te=0,tf=0;
-  const rows=ks.map(k=>{ const c=calc(k); tu+=c.solar||0; tov+=c.overValue; tw+=c.wheel; te+=c.extra; tt+=c.total; tf+=c.fixed;
-    return `<tr><td>${label(k)}</td><td>${c.solar!=null?c.solar:"—"}</td><td>${c.overValue>0?rs(c.overValue):"Within limit"}</td>${s.addWheeling?`<td>${rs(c.wheeling)}${c.wSrc==="estimate"?" (est.)":""}</td>`:""}<td><b>${rs(c.extra,0)}</b></td></tr>`; }).join("");
+  let tu=0,tov=0,tw=0,tt=0,te=0,tf=0,tv=0;
+  const rows=ks.map(k=>{ const c=calc(k); tu+=c.solar||0; tv+=c.value; tov+=c.overValue; tw+=c.wheel; te+=c.extra; tt+=c.total; tf+=c.fixed;
+    return `<tr><td>${label(k)}</td><td>${c.solar!=null?c.solar:"—"}</td><td>${rateUsed(c)}</td><td>${rs(c.value)}</td><td>${c.overValue>0?rs(c.overValue):"Within limit"}</td>${s.addWheeling?`<td>${rs(c.wheeling)}${c.wSrc==="estimate"?" (est.)":""}</td>`:""}<td><b>${rs(c.extra,0)}</b></td></tr>`; }).join("");
   const range = ks.length>1 ? `${longLabel(ks[0])} to ${longLabel(ks[ks.length-1])} bills` : `${longLabel(ks[0])} bill`;
   return `<div class="stmt">
     <h2>Electricity report for ${esc(s.tenantName)}</h2>
     <p class="meta">${range}, ${ks.length} month${ks.length>1?"s":""}</p>
     <h4>How the amount is worked out</h4>
-    <p>Your units are supplied from the owner’s rooftop solar through KSEB’s group net-metering. The monthly payment of ${rs(s.fixed,0)}, which you pay in advance, covers solar units up to ${rs(s.fixed,0)} ÷ ${rs(s.rate)} = ${(s.rate>0?s.fixed/s.rate:0).toFixed(1)} units. Only the extra amount below is due: units above that limit at ${rs(s.rate)} per unit.${s.addWheeling?" KSEB charges the owner a wheeling charge for transferring units to your connection, and it is passed on at actual cost.":""}${s.loss?" KSEB gives your connection 0.95 unit for every unit taken from the owner’s solar, so units are counted with this 5% loss.":""}</p>
+    <p>Your units are supplied from the owner’s rooftop solar through KSEB’s group net-metering. ${s.pricing==="tariff"?`The units are valued at the KSEB domestic tariff. Each month’s page shows the full tariff and the rate used. The monthly payment of ${rs(s.fixed,0)}, which you pay in advance, covers this value up to ${Math.floor(coveredUnits())} units in a month. Only the amount above ${rs(s.fixed,0)} is due.`:`The monthly payment of ${rs(s.fixed,0)}, which you pay in advance, covers solar units up to ${Math.floor(coveredUnits())} units. Units above that are charged at ${rs(s.rate)} per unit.`}${s.addWheeling?" KSEB charges the owner a wheeling charge for transferring units to your connection, and it is passed on at actual cost.":""}${s.loss?" KSEB gives your connection 0.95 unit for every unit taken from the owner’s solar, so units are counted with this 5% loss.":""}</p>
     <h4>Summary</h4>
     <div style="overflow-x:auto"><table class="rep">
-      <thead><tr><th>Bill month</th><th>Units</th><th>Above limit</th>${s.addWheeling?"<th>Wheeling</th>":""}<th>Extra to pay</th></tr></thead>
+      <thead><tr><th>Bill month</th><th>Units</th><th>Rate used</th><th>Value</th><th>Above ${rs(s.fixed,0)}</th>${s.addWheeling?"<th>Wheeling</th>":""}<th>Extra to pay</th></tr></thead>
       <tbody>${rows}</tbody>
-      <tfoot><tr><td>Total</td><td>${tu}</td><td>${rs(tov)}</td>${s.addWheeling?`<td>${rs(tw)}</td>`:""}<td>${rs(te,0)}</td></tr></tfoot>
+      <tfoot><tr><td>Total</td><td>${tu}</td><td></td><td>${rs(tv)}</td><td>${rs(tov)}</td>${s.addWheeling?`<td>${rs(tw)}</td>`:""}<td>${rs(te,0)}</td></tr></tfoot>
     </table></div>
     ${ks.map(k=>`<section class="msec"><h3>${longLabel(k)} bill <span>usage in ${usage(k)}</span></h3>${detailHTML(k)}</section>`).join("")}
     <p class="foot">The monthly ${rs(s.fixed,0)} is paid separately and is not included above. Extra amounts rounded to the nearest rupee. Copies of the KSEB bills are available on request.</p>
   </div>`;
 }
+function tariffTable(u){
+  const T=state.settings.tariff, lim=T.tele[T.tele.length-1].upto, has=u!=null;
+  const inTele = has && u<=lim;
+  let p=0, rowsA="", rowsB="", q=lim;
+  T.tele.forEach(sl=>{
+    const used = inTele && u>p, qty = used ? Math.min(u,sl.upto)-p : 0;
+    rowsA+=`<tr class="${used?"used":""}"><td>${p===0?"First "+sl.upto:(p+1)+"–"+sl.upto} units</td><td>${rs(sl.rate)}</td>${has?`<td>${used?fu(qty)+" × "+rs(sl.rate):"—"}</td><td>${used?rs(qty*sl.rate):"—"}</td>`:""}</tr>`;
+    p=sl.upto;
+  });
+  T.flat.forEach(sl=>{
+    const used = has && !inTele && u>q && (sl.upto==null || u<=sl.upto);
+    rowsB+=`<tr class="${used?"used":""}"><td>${sl.upto==null?"Above "+q:(q+1)+"–"+sl.upto} units</td><td>${rs(sl.rate)}</td>${has?`<td>${used?fu(u)+" × "+rs(sl.rate):"—"}</td><td>${used?rs(u*sl.rate):"—"}</td>`:""}</tr>`;
+    q=sl.upto;
+  });
+  const head=`<thead><tr><th>Monthly units</th><th>Rate per unit</th>${has?"<th>Your units</th><th>Amount</th>":""}</tr></thead>`;
+  const tot = has ? `<tfoot><tr><td colspan="3">Value of ${fu(u)} units</td><td>${rs(energyCost(u).cost)}</td></tr></tfoot>` : "";
+  return `<h4>KSEB domestic tariff${has?" and the rate used":""}</h4>
+  <div style="overflow-x:auto"><table class="tariff-t">${head}
+    <tbody><tr class="grp"><td colspan="${has?4:2}">Up to ${lim} units a month: each slab at its own rate${has&&!inTele?" (not used this month)":""}</td></tr>${rowsA}
+    <tr class="grp"><td colspan="${has?4:2}">Above ${lim} units a month: one rate for every unit, by monthly total${has&&inTele?" (not used this month)":""}</td></tr>${rowsB}</tbody>${tot}
+  </table></div>`;
+}
 function reportText(ks){
   const s=state.settings; let te=0, tt=0;
-  const L=[`Electricity report: ${label(ks[0])}${ks.length>1?" to "+label(ks[ks.length-1]):""} bills`, `Monthly ${rs(s.fixed,0)} (paid in advance) covers ${(s.rate>0?s.fixed/s.rate:0).toFixed(1)} units at ${rs(s.rate)}/unit`, ``];
+  const L=[`Electricity report: ${label(ks[0])}${ks.length>1?" to "+label(ks[ks.length-1]):""} bills`, `Units valued ${s.pricing==="tariff"?"at KSEB domestic tariff":"at "+rs(s.rate)+"/unit"}. Monthly ${rs(s.fixed,0)} (paid in advance) covers up to ${Math.floor(coveredUnits())} units`, ``];
   ks.forEach(k=>{ const c=calc(k); te+=c.extra; tt+=c.total;
-    L.push(`${label(k)}: ${c.solar??"-"} units, above limit ${rs(c.overValue)}${s.addWheeling?`, wheeling ${rs(c.wheeling)}`:""}, extra to pay ${rs(c.extra,0)}`); });
+    L.push(`${label(k)}: ${c.solar??"-"} units${s.pricing==="tariff"?` @ ${rateUsed(c)}`:""} = ${rs(c.value)}, above limit ${rs(c.overValue)}${s.addWheeling?`, wheeling ${rs(c.wheeling)}`:""}, extra to pay ${rs(c.extra,0)}`); });
   L.push(``,`Total extra to pay: ${rs(te,0)}`,`(Monthly ${rs(s.fixed,0)} paid separately)`);
+  if(s.pricing==="tariff") L.push(...tariffText(null));
   return L.join("\n");
 }
 function statementText(k){
@@ -552,11 +651,14 @@ function statementText(k){
   if(z) L.push(`Your units used: ${z.N+z.O+z.P} (normal ${z.N}, off-peak ${z.O}, peak ${z.P})`);
   L.push(`Units supplied from owner's solar: ${c.solar}`);
   if(s.loss) L.push(`With KSEB 5% transfer loss: ${c.units.toFixed(1)} units`);
-  L.push(`Monthly ${rs(c.fixed,0)} (already paid) covers: ${rs(c.fixed,0)} / ${rs(c.rate)} = ${c.covered.toFixed(1)} units`);
-  L.push(c.overUnits>0?`Units above limit: ${c.overUnits.toFixed(1)} x ${rs(c.rate)} = ${rs(c.overValue)}`:`Units above limit: none`);
+  L.push(`Value${s.pricing==="tariff"?" at KSEB tariff":""}: ${c.ec.desc.replace(/×/g,"x")} = ${rs(c.value)}`);
+  if(s.pricing==="tariff") L.push(`Rate used: ${c.ec.rate!=null?rs(c.ec.rate)+" per unit ("+c.ec.range+" slab)":"slab rates up to "+s.tariff.tele[s.tariff.tele.length-1].upto+" units"}`);
+  L.push(`Monthly ${rs(c.fixed,0)} already paid (covers up to ${Math.floor(c.covered)} units)`);
+  L.push(c.overValue>0?`Extra for units: ${rs(c.value)} - ${rs(c.fixed,0)} = ${rs(c.overValue)}`:`Extra for units: none`);
   if(s.addWheeling) L.push(`KSEB wheeling charge (owner's bill): ${rs(c.wheeling)}`);
   if(s.addTenantBill) L.push(`Your KSEB bill: ${rs(c.tbill||0)}`);
   L.push(``,`Extra to pay: ${rs(c.extra,0)}`,`(Monthly ${rs(c.fixed,0)} paid separately)`);
+  if(s.pricing==="tariff") L.push(...tariffText(c.units));
   return L.join("\n");
 }
 
@@ -569,6 +671,9 @@ drop.addEventListener("keydown",e=>{ if(e.key==="Enter"||e.key===" "){ e.prevent
 drop.addEventListener("drop",e=>handleFiles(e.dataTransfer.files));
 
 const bind=(id,key,isNum)=>$(id).addEventListener("input",()=>{ const v=$(id).value; state.settings[key]=isNum?(+v||0):v.trim(); save(); render(); });
+$("sPricing").addEventListener("change",e=>{ state.settings.pricing=e.target.value; save(); render(); });
+$("tariffEd").addEventListener("input",e=>{ const i=e.target; if(!i.dataset.g) return; const sl=state.settings.tariff[i.dataset.g][+i.dataset.i]; sl[i.dataset.f]= i.value===""?(i.dataset.f==="upto"?null:0):+i.value; save(); renderCard(); renderTable(keys()); });
+$("btnTariffReset").addEventListener("click",()=>{ state.settings.tariff=JSON.parse(JSON.stringify(DEFAULTS.tariff)); save(); render(); });
 bind("sFixed","fixed",true); bind("sRate","rate",true); bind("sWheel","wheelRate",true); bind("sName","tenantName",false);
 $("sOwner").addEventListener("change",()=>{ state.settings.ownerNo=$("sOwner").value.trim(); save(); render(); });
 $("sTenant").addEventListener("change",()=>{ state.settings.tenantNo=$("sTenant").value.trim(); save(); render(); });
