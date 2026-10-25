@@ -119,6 +119,16 @@ dialog::backdrop{background:rgba(10,20,18,.45)}
 .stmt .sum .row:last-child{border-bottom:0;background:var(--sun-soft);font-weight:800;font-size:1.15rem}
 .stmt .sum .row:last-child span:first-child{color:var(--ink)}
 .stmt .foot{color:var(--muted);font-size:.8rem;margin-top:18px}
+#repDlg{width:min(900px,96vw)}
+.rep-pick{display:flex;gap:16px;flex-wrap:wrap;padding-bottom:0;font-size:.92rem;color:var(--muted)}
+.rep-pick select{margin-left:6px}
+.hhead{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px}
+.hhead h3{margin:0 !important}
+.stmt table.rep{min-width:560px}
+.stmt table.rep tfoot td{font-weight:700}
+.msec{margin-top:30px;padding-top:20px;border-top:2px solid var(--line)}
+.msec h3{margin:0 0 10px;font-size:1.15rem}
+.msec h3 span{font-weight:400;color:var(--muted);font-size:.9rem;margin-left:6px}
 #printArea{display:none}
 @media print{
   :root{--bg:#fff;--surface:#fff;--ink:#000;--muted:#444;--line:#bbb;--sun-soft:#f1f1f1;color-scheme:light}
@@ -126,6 +136,8 @@ dialog::backdrop{background:rgba(10,20,18,.45)}
   .wrap,dialog{display:none !important}
   #printArea{display:block}
   #printArea .stmt{padding:0}
+  .msec{break-before:page;border-top:0;margin-top:0}
+  .stmt table.rep{min-width:0}
 }
 @media (prefers-reduced-motion: reduce){.bar .fill{transition:none}}
 </style>
@@ -187,7 +199,7 @@ dialog::backdrop{background:rgba(10,20,18,.45)}
   </div>
 
   <section class="history">
-    <h3>Month by month</h3>
+    <div class="hhead"><h3>Month by month</h3><button class="primary" id="btnReport" disabled>Report for all months</button></div>
     <div class="tablewrap">
       <table>
         <thead><tr><th>Bill month</th><th>Tenant units</th><th>Units value</th><th>Over the limit</th><th>Wheeling</th><th>Extra to collect</th><th>Bills uploaded</th></tr></thead>
@@ -218,6 +230,19 @@ dialog::backdrop{background:rgba(10,20,18,.45)}
     <button type="button" id="sCopy">Copy as text</button>
     <button type="button" id="sShare" hidden>Share</button>
     <button type="button" class="primary" id="sPrint">Print or save PDF</button>
+  </div>
+</dialog>
+<dialog id="repDlg">
+  <div class="d-body rep-pick">
+    <label>From <select id="rFrom"></select></label>
+    <label>To <select id="rTo"></select></label>
+  </div>
+  <div id="repBody"></div>
+  <div class="d-actions">
+    <button type="button" id="rClose">Close</button>
+    <button type="button" id="rCopy">Copy as text</button>
+    <button type="button" id="rShare" hidden>Share</button>
+    <button type="button" class="primary" id="rPrint">Print or save PDF</button>
   </div>
 </dialog>
 <div id="printArea"></div>
@@ -392,6 +417,7 @@ function render(){
   const pick=$("monthPick"); pick.innerHTML=""; pick.hidden=!ks.length;
   ks.forEach(k=>{ const o=document.createElement("option"); o.value=k; o.textContent=label(k)+" bill"; pick.appendChild(o); });
   if(selected) pick.value=selected;
+  $("btnReport").disabled=!ks.length;
   renderCard(); renderTable(ks);
 }
 function renderCard(){
@@ -450,7 +476,7 @@ function renderTable(ks){
 }
 
 /* ---------- tenant statement ---------- */
-function statementHTML(k){
+function stmtParts(k){
   const s=state.settings, c=calc(k), z=c.zones;
   const steps=[];
   steps.push(z ? `Your meter (consumer no. ${esc(s.tenantNo)}${c.m.tenant?`, KSEB bill ${esc(c.m.tenant.billNo)}`:""}) recorded <b>${z.N+z.O+z.P} units</b> in ${usage(k)}: ${z.N} normal, ${z.O} off-peak and ${z.P} peak.`
@@ -468,11 +494,11 @@ function statementHTML(k){
   if(c.m.tenant) src.push([`Your KSEB bill ${c.m.tenant.billNo}`, `${c.m.tenant.billDate||""}`, `${c.m.tenant.N+c.m.tenant.O+c.m.tenant.P} units`]);
   if(c.m.owner) src.push([`Owner’s KSEB bill ${c.m.owner.billNo}`, `${c.m.owner.billDate||""}`, `Wheeling ${c.m.owner.wheeling!=null?rs(c.m.owner.wheeling):"—"}`]);
   if(c.m.adj) src.push([`Consumption Adjustment Report`, label(k), `${c.m.adj.adjusted} units from solar`]);
-  return `<div class="stmt">
-    <h2>Electricity statement for ${esc(s.tenantName)}</h2>
-    <p class="meta">${longLabel(k)} KSEB bill, for usage in ${usage(k)}</p>
-    <h4>How this is calculated</h4>
-    <ol>${steps.map(x=>`<li>${x}</li>`).join("")}</ol>
+  return {steps, src, c, s};
+}
+function detailHTML(k){
+  const {steps, src, c, s} = stmtParts(k);
+  return `<ol>${steps.map(x=>`<li>${x}</li>`).join("")}</ol>
     <div class="sum">
       <div class="row"><span>Monthly amount</span><span>${rs(c.fixed,0)}</span></div>
       <div class="row"><span>Units above the limit</span><span>${rs(c.overValue)}</span></div>
@@ -480,9 +506,46 @@ function statementHTML(k){
       ${s.addTenantBill?`<div class="row"><span>Your KSEB bill</span><span>${rs(c.tbill||0)}</span></div>`:""}
       <div class="row"><span>Total to pay</span><span>${rs(c.total,0)}</span></div>
     </div>
-    ${src.length?`<h4>Figures taken from</h4><div style="overflow-x:auto"><table><tbody>${src.map(r=>`<tr><td>${esc(r[0])}</td><td>${esc(r[1])}</td><td>${esc(r[2])}</td></tr>`).join("")}</tbody></table></div>`:""}
+    ${src.length?`<h4>Figures taken from</h4><div style="overflow-x:auto"><table><tbody>${src.map(r=>`<tr><td>${esc(r[0])}</td><td>${esc(r[1])}</td><td>${esc(r[2])}</td></tr>`).join("")}</tbody></table></div>`:""}`;
+}
+function statementHTML(k){
+  const s=state.settings;
+  return `<div class="stmt">
+    <h2>Electricity statement for ${esc(s.tenantName)}</h2>
+    <p class="meta">${longLabel(k)} KSEB bill, for usage in ${usage(k)}</p>
+    <h4>How this is calculated</h4>
+    ${detailHTML(k)}
     <p class="foot">Extra amount rounded to the nearest rupee. Copies of the KSEB bills are available on request.</p>
   </div>`;
+}
+function reportHTML(ks){
+  const s=state.settings;
+  let tu=0,tov=0,tw=0,tt=0,te=0,tf=0;
+  const rows=ks.map(k=>{ const c=calc(k); tu+=c.solar||0; tov+=c.overValue; tw+=c.wheel; te+=c.extra; tt+=c.total; tf+=c.fixed;
+    return `<tr><td>${label(k)}</td><td>${c.solar!=null?c.solar:"—"}</td><td>${rs(c.fixed,0)}</td><td>${c.overValue>0?rs(c.overValue):"Within limit"}</td>${s.addWheeling?`<td>${rs(c.wheeling)}${c.wSrc==="estimate"?" (est.)":""}</td>`:""}<td>${rs(c.extra,0)}</td><td><b>${rs(c.total,0)}</b></td></tr>`; }).join("");
+  const range = ks.length>1 ? `${longLabel(ks[0])} to ${longLabel(ks[ks.length-1])} bills` : `${longLabel(ks[0])} bill`;
+  return `<div class="stmt">
+    <h2>Electricity report for ${esc(s.tenantName)}</h2>
+    <p class="meta">${range}, ${ks.length} month${ks.length>1?"s":""}</p>
+    <h4>How the amount is worked out</h4>
+    <p>Your units are supplied from the owner’s rooftop solar through KSEB’s group net-metering. The monthly payment of ${rs(s.fixed,0)} covers solar units up to ${rs(s.fixed,0)} ÷ ${rs(s.rate)} = ${(s.rate>0?s.fixed/s.rate:0).toFixed(1)} units. Units above that are charged at ${rs(s.rate)} per unit.${s.addWheeling?" KSEB charges the owner a wheeling charge for transferring units to your connection, and it is passed on at actual cost.":""}${s.loss?" KSEB gives your connection 0.95 unit for every unit taken from the owner’s solar, so units are counted with this 5% loss.":""}</p>
+    <h4>Summary</h4>
+    <div style="overflow-x:auto"><table class="rep">
+      <thead><tr><th>Bill month</th><th>Units</th><th>Monthly amount</th><th>Above limit</th>${s.addWheeling?"<th>Wheeling</th>":""}<th>Extra</th><th>Total</th></tr></thead>
+      <tbody>${rows}</tbody>
+      <tfoot><tr><td>Total</td><td>${tu}</td><td>${rs(tf,0)}</td><td>${rs(tov)}</td>${s.addWheeling?`<td>${rs(tw)}</td>`:""}<td>${rs(te,0)}</td><td>${rs(tt,0)}</td></tr></tfoot>
+    </table></div>
+    ${ks.map(k=>`<section class="msec"><h3>${longLabel(k)} bill <span>usage in ${usage(k)}</span></h3>${detailHTML(k)}</section>`).join("")}
+    <p class="foot">Extra amounts rounded to the nearest rupee. Copies of the KSEB bills are available on request.</p>
+  </div>`;
+}
+function reportText(ks){
+  const s=state.settings; let te=0, tt=0;
+  const L=[`Electricity report: ${label(ks[0])}${ks.length>1?" to "+label(ks[ks.length-1]):""} bills`, `Monthly ${rs(s.fixed,0)} covers ${(s.rate>0?s.fixed/s.rate:0).toFixed(1)} units at ${rs(s.rate)}/unit`, ``];
+  ks.forEach(k=>{ const c=calc(k); te+=c.extra; tt+=c.total;
+    L.push(`${label(k)}: ${c.solar??"-"} units, above limit ${rs(c.overValue)}${s.addWheeling?`, wheeling ${rs(c.wheeling)}`:""}, extra ${rs(c.extra,0)}, total ${rs(c.total,0)}`); });
+  L.push(``,`Total extra: ${rs(te,0)}`,`Total for ${ks.length} month${ks.length>1?"s":""}: ${rs(tt,0)}`);
+  return L.join("\n");
 }
 function statementText(k){
   const s=state.settings, c=calc(k), z=c.zones;
@@ -562,6 +625,19 @@ $("btnClear").addEventListener("click",()=>{
   state={settings:{...DEFAULTS},months:{}}; selected=null; save(); $("log").innerHTML=""; render();
 });
 
+function repKeys(){ const f=$("rFrom").value, t=$("rTo").value; return keys().slice().reverse().filter(k=>k>=f&&k<=t); }
+function fillRep(){ const ks=repKeys(); $("repBody").innerHTML = ks.length ? reportHTML(ks) : '<p class="empty">“From” month must be before “To” month.</p>'; $("rCopy").textContent="Copy as text"; }
+$("btnReport").addEventListener("click",()=>{
+  const ks=keys().slice().reverse(); if(!ks.length) return;
+  ["rFrom","rTo"].forEach(id=>{ $(id).innerHTML=ks.map(k=>`<option value="${k}">${label(k)}</option>`).join(""); });
+  $("rFrom").value=ks[0]; $("rTo").value=ks[ks.length-1];
+  $("rShare").hidden=!navigator.share; fillRep(); $("repDlg").showModal();
+});
+$("rFrom").addEventListener("change",fillRep); $("rTo").addEventListener("change",fillRep);
+$("rClose").addEventListener("click",()=>$("repDlg").close());
+$("rCopy").addEventListener("click",async()=>{ const ks=repKeys(); if(!ks.length) return; try{ await navigator.clipboard.writeText(reportText(ks)); $("rCopy").textContent="Copied"; }catch(e){ $("rCopy").textContent="Copy blocked by browser"; } });
+$("rShare").addEventListener("click",()=>{ const ks=repKeys(); if(ks.length) navigator.share({title:"Electricity report", text:reportText(ks)}).catch(()=>{}); });
+$("rPrint").addEventListener("click",()=>{ const ks=repKeys(); if(!ks.length) return; $("printArea").innerHTML=reportHTML(ks); $("repDlg").close(); setTimeout(()=>window.print(),50); });
 if(window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
 load(); render();
 })();
