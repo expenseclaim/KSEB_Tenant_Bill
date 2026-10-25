@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tenant Solar Charges</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>☀️</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<style>
+:root{
+  --bg:#EEF2EE; --surface:#FFFFFF; --ink:#18302E; --muted:#5B6E6B; --line:#D3DDD8;
+  --teal:#0F6E68; --teal-soft:#DCEDEA; --sun:#E8A317; --sun-soft:#FBEFD2; --red:#B4412E; --red-soft:#F6E0DB;
+  color-scheme:light; box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#101917; --surface:#18241F; --ink:#E4EEEA; --muted:#93A8A3; --line:#2B3B37;
+    --teal:#4FC0B5; --teal-soft:#183A36; --sun:#F2B940; --sun-soft:#3A3018; --red:#E57C68; --red-soft:#3E211B; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#101917; --surface:#18241F; --ink:#E4EEEA; --muted:#93A8A3; --line:#2B3B37;
+  --teal:#4FC0B5; --teal-soft:#183A36; --sun:#F2B940; --sun-soft:#3A3018; --red:#E57C68; --red-soft:#3E211B; color-scheme:dark;
+}
+*,*::before,*::after{box-sizing:inherit}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Archivo",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:16px;line-height:1.45;font-variant-numeric:tabular-nums}
+.wrap{max-width:1000px;margin:0 auto;padding:28px 20px 60px}
+header{display:flex;flex-wrap:wrap;gap:12px 24px;align-items:flex-end;justify-content:space-between;margin-bottom:22px}
+h1{font-size:clamp(1.6rem,4vw,2.2rem);font-weight:800;letter-spacing:-0.02em;margin:0;line-height:1.1}
+.sub{color:var(--muted);margin:6px 0 0;font-size:.95rem;max-width:60ch}
+.chips{display:flex;gap:8px;flex-wrap:wrap}
+.chip{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:5px 12px;font-size:.82rem;color:var(--muted)}
+.chip b{color:var(--ink);font-weight:600}
+button{font:inherit;cursor:pointer;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--ink);padding:9px 16px;font-weight:600}
+button.primary{background:var(--teal);border-color:var(--teal);color:var(--surface)}
+button.ghost{background:transparent}
+button:disabled{opacity:.5;cursor:not-allowed}
+button:focus-visible,input:focus-visible,select:focus-visible,.drop:focus-visible{outline:3px solid var(--sun);outline-offset:2px}
+.drop{display:block;border:2px dashed var(--teal);border-radius:16px;background:var(--surface);padding:22px;text-align:center;cursor:pointer;margin-bottom:12px}
+.drop.over{background:var(--teal-soft)}
+.drop strong{display:block;font-size:1.1rem}
+.drop span{color:var(--muted);font-size:.9rem}
+.log{font-size:.85rem;color:var(--muted);margin:0 0 20px;padding:0;list-style:none}
+.log li{padding:2px 0}
+.log .ok::before{content:"✓ ";color:var(--teal);font-weight:700}
+.log .bad::before{content:"! ";color:var(--red);font-weight:700}
+.grid{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:20px}
+@media (max-width:780px){.grid{grid-template-columns:1fr}}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:18px;overflow:hidden}
+.c-head{padding:20px 22px 14px;display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap}
+.c-head h2{margin:0;font-size:1.2rem}
+.c-head p{margin:2px 0 0;color:var(--muted);font-size:.88rem}
+select{font:inherit;padding:7px 10px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--ink)}
+.meter{padding:0 22px 16px}
+.bar{position:relative;height:28px;border-radius:8px;background:var(--teal-soft);overflow:hidden}
+.bar .fill{position:absolute;inset:0 auto 0 0;background:var(--teal);transition:width .5s ease}
+.bar .over{position:absolute;top:0;bottom:0;background:repeating-linear-gradient(135deg,var(--red) 0 6px,var(--red-soft) 6px 10px)}
+.bar .mark{position:absolute;top:0;bottom:0;width:3px;background:var(--sun)}
+.legend{display:flex;justify-content:space-between;font-size:.82rem;color:var(--muted);margin-top:8px;gap:8px;flex-wrap:wrap}
+.lines{border-top:1px dashed var(--line);padding:12px 22px}
+.row{display:flex;justify-content:space-between;gap:12px;padding:5px 0;font-size:.96rem}
+.row span:first-child{color:var(--muted)}
+.warn{margin:0 22px 12px;padding:10px 12px;border-radius:10px;background:var(--red-soft);color:var(--ink);font-size:.86rem}
+.total{background:var(--sun-soft);padding:18px 22px;display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap}
+.total .lbl{font-weight:600}
+.total .amt{font-size:clamp(2rem,6vw,2.8rem);font-weight:800;letter-spacing:-0.03em;line-height:1}
+.total small{display:block;color:var(--muted);font-size:.85rem;margin-top:4px}
+.actions{display:flex;gap:10px;padding:14px 22px 20px;flex-wrap:wrap}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px 20px}
+.panel h3{margin:0 0 12px;font-size:1rem}
+.field{display:grid;grid-template-columns:1fr 150px;gap:10px;align-items:center;margin-bottom:10px;font-size:.92rem}
+.field small{display:block;color:var(--muted);font-size:.8rem}
+input[type=number],input[type=text]{font:inherit;width:100%;padding:8px 10px;border-radius:9px;border:1px solid var(--line);background:var(--bg);color:var(--ink)}
+input[type=number]{text-align:right}
+.check{display:flex;gap:10px;align-items:flex-start;font-size:.92rem;margin:10px 0 4px}
+.check input{margin-top:4px;accent-color:var(--teal)}
+.tools{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}
+.tools button{padding:7px 12px;font-size:.85rem}
+section.history{margin-top:24px}
+section.history h3{margin:0 0 10px;font-size:1.05rem}
+.tablewrap{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:14px}
+table{border-collapse:collapse;width:100%;font-size:.92rem}
+.history table{min-width:720px}
+th,td{padding:10px 14px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}
+th{color:var(--muted);font-weight:500;font-size:.82rem}
+th:first-child,td:first-child{text-align:left}
+.history tbody tr{cursor:pointer}
+.history tbody tr:hover,.history tbody tr.sel{background:var(--teal-soft)}
+.history tbody tr.sel{box-shadow:inset 3px 0 0 var(--teal)}
+tfoot td{font-weight:700;border-bottom:0}
+.over-t{color:var(--red);font-weight:700}
+.ok-t{color:var(--teal)}
+.miss{color:var(--sun);font-size:.8rem}
+.empty{padding:28px;text-align:center;color:var(--muted)}
+dialog{border:1px solid var(--line);border-radius:16px;padding:0;background:var(--surface);color:var(--ink);width:min(560px,94vw)}
+dialog::backdrop{background:rgba(10,20,18,.45)}
+.d-body{padding:20px 22px}
+.d-body h3{margin:0 0 4px}
+.hint{color:var(--muted);font-size:.85rem;margin:0 0 14px}
+.d-actions{display:flex;justify-content:flex-end;gap:10px;padding:14px 22px;border-top:1px solid var(--line);flex-wrap:wrap}
+/* tenant statement */
+#stmtDlg{width:min(760px,96vw)}
+.stmt{padding:28px 30px;color:var(--ink)}
+.stmt h2{font-size:1.5rem;margin:0;letter-spacing:-0.01em}
+.stmt .meta{color:var(--muted);font-size:.9rem;margin:4px 0 20px}
+.stmt h4{font-size:1rem;margin:22px 0 8px}
+.stmt p{margin:0 0 10px;max-width:68ch}
+.stmt table{min-width:0;font-size:.9rem;border:1px solid var(--line)}
+.stmt ol{padding-left:1.3em;margin:0}
+.stmt ol li{margin:0 0 10px;padding-left:4px}
+.stmt ol li b{white-space:nowrap}
+.stmt .sum{margin-top:18px;border:2px solid var(--ink);border-radius:12px;overflow:hidden}
+.stmt .sum .row{padding:10px 16px;border-bottom:1px solid var(--line)}
+.stmt .sum .row:last-child{border-bottom:0;background:var(--sun-soft);font-weight:800;font-size:1.15rem}
+.stmt .sum .row:last-child span:first-child{color:var(--ink)}
+.stmt .foot{color:var(--muted);font-size:.8rem;margin-top:18px}
+#printArea{display:none}
+@media print{
+  :root{--bg:#fff;--surface:#fff;--ink:#000;--muted:#444;--line:#bbb;--sun-soft:#f1f1f1;color-scheme:light}
+  body{background:#fff}
+  .wrap,dialog{display:none !important}
+  #printArea{display:block}
+  #printArea .stmt{padding:0}
+}
+@media (prefers-reduced-motion: reduce){.bar .fill{transition:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Tenant solar charges</h1>
+      <p class="sub">Upload your KSEB bills and your tenant’s. The app reads the units and wheeling charge, works out any extra amount, and prepares a statement you can send.</p>
+    </div>
+    <div class="chips"><span class="chip">Owner <b id="chOwner"></b></span><span class="chip">Tenant <b id="chTenant"></b></span></div>
+  </header>
+
+  <label class="drop" id="drop" tabindex="0">
+    <input type="file" id="fileIn" accept="application/pdf,.pdf" multiple hidden>
+    <strong>Upload KSEB bill PDFs</strong>
+    <span>Drop or choose both bills for a month (yours and the tenant’s). You can upload many months at once.</span>
+  </label>
+  <ul class="log" id="log"></ul>
+
+  <div class="grid">
+    <div class="card">
+      <div class="c-head">
+        <div><h2 id="cTitle">No bills yet</h2><p id="cSub">Upload bills to see the tenant’s charges.</p></div>
+        <select id="monthPick" aria-label="Bill month" hidden></select>
+      </div>
+      <div class="meter">
+        <div class="bar" aria-hidden="true"><div class="fill" id="bFill" style="width:0"></div><div class="over" id="bOver"></div><div class="mark" id="bMark"></div></div>
+        <div class="legend"><span id="lgUsed">0 units used</span><span id="lgCov"></span></div>
+      </div>
+      <div id="warns"></div>
+      <div class="lines" id="lines"></div>
+      <div class="total"><div><div class="lbl">Extra to collect</div><small id="tSub">On top of the monthly amount</small></div><div class="amt" id="tAmt">₹0</div></div>
+      <div class="actions">
+        <button class="primary" id="btnStmt" disabled>Statement for tenant</button>
+        <button id="btnEdit" disabled>Correct figures</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Agreement and rates</h3>
+      <label class="field"><span>Tenant name<small>Shown on the statement</small></span><input type="text" id="sName"></label>
+      <label class="field"><span>Monthly amount (₹)<small>Fixed amount tenant pays you</small></span><input type="number" id="sFixed" step="1" min="0"></label>
+      <label class="field"><span>Value per unit (₹)<small>Rate for units above the monthly amount</small></span><input type="number" id="sRate" step="0.01" min="0"></label>
+      <label class="field"><span>Wheeling rate (₹/unit)<small>Used only when your bill for that month is missing</small></span><input type="number" id="sWheel" step="0.0001" min="0"></label>
+      <label class="check"><input type="checkbox" id="sAddWheel"><span>Charge wheeling to tenant on top</span></label>
+      <label class="check"><input type="checkbox" id="sLoss"><span>Count 5% transfer loss (tenant gets 0.95 unit per unit taken from your bank)</span></label>
+      <label class="check"><input type="checkbox" id="sTenantBill"><span>Tenant’s own KSEB bill is paid by me, collect it too</span></label>
+      <label class="field" style="margin-top:12px"><span>Your consumer no.</span><input type="text" id="sOwner" inputmode="numeric"></label>
+      <label class="field"><span>Tenant consumer no.</span><input type="text" id="sTenant" inputmode="numeric"></label>
+      <div class="tools">
+        <button id="btnExport">Download backup</button>
+        <button id="btnImport">Restore backup</button>
+        <input type="file" id="impIn" accept=".json,application/json" hidden>
+        <button id="btnClear" class="ghost">Clear all data</button>
+      </div>
+    </div>
+  </div>
+
+  <section class="history">
+    <h3>Month by month</h3>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Bill month</th><th>Tenant units</th><th>Units value</th><th>Over the limit</th><th>Wheeling</th><th>Extra to collect</th><th>Bills uploaded</th></tr></thead>
+        <tbody id="tbody"></tbody><tfoot id="tfoot"></tfoot>
+      </table>
+    </div>
+  </section>
+</div>
+
+<dialog id="editDlg">
+  <form method="dialog" id="editForm">
+    <div class="d-body">
+      <h3 id="eTitle">Correct figures</h3>
+      <p class="hint">Leave a box empty to use the value read from the bill.</p>
+      <label class="field"><span>Tenant units from your solar<small>Adjusted from bank</small></span><input type="number" id="eUnits" min="0" step="1"></label>
+      <label class="field"><span>Units KSEB billed tenant directly</span><input type="number" id="eBilled" min="0" step="1"></label>
+      <label class="field"><span>Wheeling charge on your bill (₹)</span><input type="number" id="eWheel" min="0" step="0.01"></label>
+      <label class="field"><span>Tenant’s KSEB bill amount (₹)</span><input type="number" id="eTBill" min="0" step="0.01"></label>
+    </div>
+    <div class="d-actions"><button type="button" id="eCancel">Cancel</button><button type="submit" class="primary">Save figures</button></div>
+  </form>
+</dialog>
+
+<dialog id="stmtDlg">
+  <div id="stmtBody"></div>
+  <div class="d-actions">
+    <button type="button" id="sClose">Close</button>
+    <button type="button" id="sCopy">Copy as text</button>
+    <button type="button" id="sShare" hidden>Share</button>
+    <button type="button" class="primary" id="sPrint">Print or save PDF</button>
+  </div>
+</dialog>
+<div id="printArea"></div>
+<script>
+(function(){
+"use strict";
+const KEY = "tenantSolarApp.v1";
+const DEFAULTS = {ownerNo:"1145140014489", tenantNo:"1145148015204", tenantName:"Tenant", fixed:2000, rate:7, wheelRate:0.6736, addWheeling:true, loss:false, addTenantBill:false};
+let state = {settings:{...DEFAULTS}, months:{}};
+let selected = null;
+const $ = id => document.getElementById(id);
+const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const FULL = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+const rs = (n,d=2) => "₹" + (Number(n)||0).toLocaleString("en-IN",{minimumFractionDigits:d,maximumFractionDigits:d});
+const num = v => (v===""||v==null||isNaN(+v)) ? null : +v;
+const label = k => { const [y,m]=k.split("-").map(Number); return MON[m-1]+" "+y; };
+const longLabel = k => { const [y,m]=k.split("-").map(Number); return FULL[m-1]+" "+y; };
+const usage = k => { const [y,m]=k.split("-").map(Number); return m===1 ? "December "+(y-1) : FULL[m-2]+" "+y; };
+const esc = t => String(t??"").replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+/* ---------- storage ---------- */
+function load(){
+  try{ const raw=localStorage.getItem(KEY); if(raw){ const d=JSON.parse(raw); state={settings:{...DEFAULTS,...(d.settings||{})}, months:d.months||{}}; } }catch(e){}
+}
+function save(){ try{ localStorage.setItem(KEY, JSON.stringify(state)); }catch(e){ logLine("Could not save on this device: browser storage is blocked.", false); } }
+
+/* ---------- PDF reading ---------- */
+function parseKseb(text){
+  const t = text.replace(/\s+/g," ");
+  const r = {}; let m;
+  if((m=t.match(/Consumer#\s*(\d{13})/))) r.consumer=m[1];
+  if((m=t.match(/Billing Period\s*(\d{1,2})\s*\/\s*(\d{4})/))) r.month=m[2]+"-"+m[1].padStart(2,"0");
+  if((m=t.match(/Bill#\s*(\d{10,})/))) r.billNo=m[1];
+  if((m=t.match(/Bill Date\s*(\d{2}-\d{2}-\d{4})/))) r.billDate=m[1];
+  if((m=t.match(/Wheeling Charge\s+(-?[\d.]+)/))) r.wheeling=+m[1];
+  if((m=t.match(/Total Amt\.\s*\(Bill#\s*\d+\)\s*\([a-z+ ]+\)\s*(-?[\d.]+)/))) r.total=+m[1];
+  r.zones={};
+  const re=/KWH\s+(Normal|Off Peak|Peak)\s+(Import|Export)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+(\d+)/g;
+  while((m=re.exec(t))){ const z={"Normal":"N","Off Peak":"O","Peak":"P"}[m[1]]; (r.zones[z] = r.zones[z]||{})[m[2]==="Import"?"imp":"exp"]=+m[6]; }
+  r.adj=[];
+  const i=t.indexOf("Consumption Adjustment Report");
+  if(i>=0){
+    const tok=t.slice(i).split(" "); let mon=null, con=null;
+    const isNum=s=>/^-?\d+(\.\d+)?$/.test(s);
+    for(let k=0;k<tok.length;k++){
+      const s=tok[k];
+      if(/^20\d{4}$/.test(s)){ mon=s.slice(0,4)+"-"+s.slice(4); continue; }
+      if(/^\d{5}$/.test(s)){ con=s; continue; }
+      const nx=tok.slice(k+1,k+8);
+      if(/^[NPO]$/.test(s) && mon && con && nx.length===7 && nx.every(isNum)){
+        const v=nx.map(Number);
+        r.adj.push({month:mon,cons:con,zone:s,imp:v[0],adjusted:v[4],billed:v[5]});
+        k+=7;
+      }
+    }
+  }
+  return r;
+}
+async function pdfText(file){
+  if(!window.pdfjsLib) throw new Error("PDF reader did not load. Check your internet connection and reload.");
+  const buf = await file.arrayBuffer();
+  const doc = await pdfjsLib.getDocument({data:buf}).promise;
+  let out = [];
+  for(let p=1;p<=doc.numPages;p++){
+    const page = await doc.getPage(p);
+    const c = await page.getTextContent();
+    out.push(c.items.map(it=>it.str).join(" "));
+  }
+  return out.join(" ");
+}
+function mergeBill(r, fname){
+  const s = state.settings;
+  const tSuffix = s.tenantNo.slice(-5);
+  // adjustment report rows for the tenant (may cover 2 months)
+  const byMonth = {};
+  r.adj.filter(a=>a.cons===tSuffix).forEach(a=>{
+    const b = byMonth[a.month] = byMonth[a.month] || {adjusted:0,billed:0,N:0,O:0,P:0};
+    b.adjusted += a.adjusted; b.billed += a.billed; b[a.zone] = a.imp;
+  });
+  Object.entries(byMonth).forEach(([k,v])=>{ const mo = state.months[k] = state.months[k]||{}; mo.adj = v; });
+  if(!r.consumer || !r.month) return {ok:false, msg:`${fname}: not a KSEB bill this app can read.`};
+  const mo = state.months[r.month] = state.months[r.month] || {};
+  const z = r.zones, zi = k => (z[k]&&z[k].imp)||0;
+  if(r.consumer===s.ownerNo){
+    mo.owner = {billNo:r.billNo, billDate:r.billDate, wheeling:r.wheeling??null, total:r.total??null};
+    return {ok:true, msg:`${fname}: your bill for ${label(r.month)}, wheeling ${r.wheeling!=null?rs(r.wheeling):"not shown"}.`, month:r.month};
+  }
+  if(r.consumer===s.tenantNo){
+    mo.tenant = {billNo:r.billNo, billDate:r.billDate, total:r.total??null, N:zi("N"), O:zi("O"), P:zi("P")};
+    return {ok:true, msg:`${fname}: tenant bill for ${label(r.month)}, ${zi("N")+zi("O")+zi("P")} units.`, month:r.month};
+  }
+  return {ok:false, msg:`${fname}: consumer ${r.consumer} is not yours or the tenant’s. Check the consumer numbers in settings.`};
+}
+async function handleFiles(files){
+  const list=[...files].filter(f=>/\.pdf$/i.test(f.name)||f.type==="application/pdf");
+  if(!list.length){ logLine("Choose PDF files downloaded from KSEB.", false); return; }
+  $("log").innerHTML=""; let last=null;
+  for(const f of list){
+    try{ const res = mergeBill(parseKseb(await pdfText(f)), f.name); logLine(res.msg, res.ok); if(res.month && (!last || res.month>last)) last=res.month; }
+    catch(e){ logLine(`${f.name}: ${e.message||"could not be read"}`, false); }
+  }
+  if(last) selected=last;
+  save(); render();
+}
+function logLine(msg, ok){ const li=document.createElement("li"); li.className=ok?"ok":"bad"; li.textContent=msg; $("log").appendChild(li); }
+
+/* ---------- calculation ---------- */
+function resolve(k){
+  const m = state.months[k]||{}, man = m.manual||{}, s = state.settings;
+  let solar=null, src="", zones=null, billed=0;
+  if(m.tenant) zones={N:m.tenant.N,O:m.tenant.O,P:m.tenant.P}; else if(m.adj) zones={N:m.adj.N,O:m.adj.O,P:m.adj.P};
+  if(m.adj){ billed=m.adj.billed; }
+  if(num(man.billed)!=null) billed=num(man.billed);
+  if(num(man.units)!=null){ solar=num(man.units); src="entered by you"; }
+  else if(m.adj){ solar=m.adj.adjusted; src="KSEB adjustment report"; }
+  else if(m.tenant){ solar=Math.max(0, m.tenant.N+m.tenant.O+m.tenant.P-billed); src="tenant meter reading"; }
+  let wheeling=null, wSrc="";
+  if(num(man.wheeling)!=null){ wheeling=num(man.wheeling); wSrc="entered by you"; }
+  else if(m.owner && m.owner.wheeling!=null){ wheeling=m.owner.wheeling; wSrc="your KSEB bill"; }
+  else if(solar!=null){ wheeling=solar*(+s.wheelRate||0); wSrc="estimate"; }
+  const tbill = num(man.tbill)!=null ? num(man.tbill) : (m.tenant&&m.tenant.total!=null ? m.tenant.total : null);
+  return {m, solar, src, zones, billed, wheeling, wSrc, tbill};
+}
+function calc(k){
+  const s=state.settings, r=resolve(k);
+  const fixed=+s.fixed||0, rate=+s.rate||0;
+  const solar=r.solar||0;
+  const units = s.loss ? solar/0.95 : solar;
+  const value = units*rate;
+  const covered = rate>0 ? fixed/rate : 0;
+  const overUnits = Math.max(0, units-covered);
+  const overValue = Math.max(0, value-fixed);
+  const wheel = s.addWheeling ? (r.wheeling||0) : 0;
+  const tb = s.addTenantBill ? (r.tbill||0) : 0;
+  const extra = Math.round(overValue + wheel + tb);
+  return {...r, fixed, rate, units, value, covered, overUnits, overValue, wheel, tb, extra, total:fixed+extra};
+}
+const keys = () => Object.keys(state.months).filter(k=>{ const m=state.months[k]; return m.owner||m.tenant||m.adj||m.manual; }).sort().reverse();
+
+/* ---------- render ---------- */
+function render(){
+  const s=state.settings;
+  $("chOwner").textContent=s.ownerNo; $("chTenant").textContent=s.tenantNo;
+  $("sName").value=s.tenantName; $("sFixed").value=s.fixed; $("sRate").value=s.rate; $("sWheel").value=s.wheelRate;
+  $("sAddWheel").checked=!!s.addWheeling; $("sLoss").checked=!!s.loss; $("sTenantBill").checked=!!s.addTenantBill;
+  $("sOwner").value=s.ownerNo; $("sTenant").value=s.tenantNo;
+  const ks=keys();
+  if(!ks.includes(selected)) selected=ks[0]||null;
+  const pick=$("monthPick"); pick.innerHTML=""; pick.hidden=!ks.length;
+  ks.forEach(k=>{ const o=document.createElement("option"); o.value=k; o.textContent=label(k)+" bill"; pick.appendChild(o); });
+  if(selected) pick.value=selected;
+  renderCard(); renderTable(ks);
+}
+function renderCard(){
+  const has = !!selected;
+  $("btnStmt").disabled=!has; $("btnEdit").disabled=!has;
+  if(!has){
+    $("cTitle").textContent="No bills yet"; $("cSub").textContent="Upload bills to see the tenant’s charges.";
+    $("lines").innerHTML=""; $("warns").innerHTML=""; $("tAmt").textContent="₹0"; $("tSub").textContent="On top of the monthly amount";
+    $("bFill").style.width="0"; $("bOver").style.width="0"; $("lgUsed").textContent="0 units used"; $("lgCov").textContent=""; return;
+  }
+  const s=state.settings, c=calc(selected);
+  $("cTitle").textContent=label(selected)+" bill";
+  $("cSub").textContent="Tenant usage in "+usage(selected);
+  const scale=Math.max(c.units,c.covered)*1.08||1;
+  $("bFill").style.width=(Math.min(c.units,c.covered)/scale*100)+"%";
+  $("bOver").style.left=(c.covered/scale*100)+"%"; $("bOver").style.width=(c.overUnits/scale*100)+"%";
+  $("bMark").style.left=`calc(${c.covered/scale*100}% - 1px)`;
+  $("lgUsed").textContent=Math.round(c.units)+" units used"+(s.loss?" incl. 5% loss":"");
+  $("lgCov").textContent=rs(c.fixed,0)+" covers "+Math.floor(c.covered)+" units";
+  const w=[];
+  if(c.solar==null) w.push("Tenant units not found. Upload the tenant’s bill or your bill for this month.");
+  if(!c.m.owner && c.wSrc==="estimate") w.push("Your bill for this month is not uploaded, so the wheeling charge is an estimate.");
+  if(c.billed>0) w.push(`KSEB billed the tenant directly for ${c.billed} units because your solar bank ran short. Those units are on the tenant’s own KSEB bill and are not counted here.`);
+  $("warns").innerHTML=w.map(x=>`<div class="warn">${esc(x)}</div>`).join("");
+  const rows=[
+    ["Tenant units from your solar", c.solar!=null?`${c.solar} units`:"Not found"],
+    ...(s.loss?[["Units counted with 5% loss", c.units.toFixed(1)+" units"]]:[]),
+    [`Value at ${rs(c.rate)} per unit`, rs(c.value)],
+    ["Covered by monthly amount", "− "+rs(Math.min(c.value,c.fixed))],
+    [`Above the limit (${c.overUnits.toFixed(1)} units)`, rs(c.overValue)],
+    [`Wheeling charge${s.addWheeling?"":" (not charged)"}${c.wSrc==="estimate"?" (estimate)":""}`, rs(c.wheeling)],
+    ...(s.addTenantBill?[["Tenant’s KSEB bill", c.tbill!=null?rs(c.tbill):"Not uploaded"]]:[]),
+  ];
+  $("lines").innerHTML=rows.map(r=>`<div class="row"><span>${esc(r[0])}</span><span>${esc(r[1])}</span></div>`).join("");
+  $("tAmt").textContent=rs(c.extra,0);
+  $("tSub").textContent="Total from tenant this month: "+rs(c.total,0);
+}
+function renderTable(ks){
+  const tb=$("tbody"); tb.innerHTML="";
+  if(!ks.length){ tb.innerHTML='<tr><td colspan="7" class="empty">Upload KSEB bill PDFs to fill this table.</td></tr>'; $("tfoot").innerHTML=""; return; }
+  let tu=0,tv=0,to=0,tw=0,te=0;
+  ks.forEach(k=>{
+    const c=calc(k), m=state.months[k];
+    tu+=c.solar||0; tv+=c.value; to+=c.overValue; tw+=c.wheeling||0; te+=c.extra;
+    const up=[m.owner?"Yours":"",m.tenant?"Tenant":""].filter(Boolean).join(" + ")||'<span class="miss">Report only</span>';
+    const tr=document.createElement("tr"); tr.tabIndex=0; if(k===selected) tr.className="sel";
+    tr.innerHTML=`<td>${label(k)}</td><td>${c.solar!=null?c.solar:"—"}</td><td>${rs(c.value)}</td>
+      <td class="${c.overValue>0?"over-t":"ok-t"}">${c.overValue>0?rs(c.overValue):"Within limit"}</td>
+      <td>${c.wheeling!=null?rs(c.wheeling):"—"}${c.wSrc==="estimate"?' <span class="miss">est.</span>':""}</td>
+      <td><b>${rs(c.extra,0)}</b></td><td>${up}</td>`;
+    const go=()=>{ selected=k; render(); window.scrollTo({top:0,behavior:matchMedia("(prefers-reduced-motion: reduce)").matches?"auto":"smooth"}); };
+    tr.addEventListener("click",go); tr.addEventListener("keydown",e=>{ if(e.key==="Enter") go(); });
+    tb.appendChild(tr);
+  });
+  $("tfoot").innerHTML=`<tr><td>Total</td><td>${tu}</td><td>${rs(tv)}</td><td>${rs(to)}</td><td>${rs(tw)}</td><td>${rs(te,0)}</td><td></td></tr>`;
+}
+
+/* ---------- tenant statement ---------- */
+function statementHTML(k){
+  const s=state.settings, c=calc(k), z=c.zones;
+  const steps=[];
+  steps.push(z ? `Your meter (consumer no. ${esc(s.tenantNo)}${c.m.tenant?`, KSEB bill ${esc(c.m.tenant.billNo)}`:""}) recorded <b>${z.N+z.O+z.P} units</b> in ${usage(k)}: ${z.N} normal, ${z.O} off-peak and ${z.P} peak.`
+               : `Your consumption in ${usage(k)} was <b>${c.solar} units</b>.`);
+  steps.push(`KSEB supplied <b>${c.solar} units</b> of this from the owner’s rooftop solar (shown as “Adjusted from bank” in KSEB’s Consumption Adjustment Report). That is why your KSEB bill has no energy charge.`
+    + (c.billed>0?` The remaining ${c.billed} units were billed to you directly by KSEB and are not included here.`:""));
+  if(s.loss) steps.push(`KSEB gives your connection 0.95 unit for every unit taken from the owner’s solar bank, so ${c.solar} units used ${c.units.toFixed(1)} units of the owner’s solar.`);
+  steps.push(`Your monthly payment of <b>${rs(c.fixed,0)}</b> covers solar units up to ${rs(c.fixed,0)} ÷ ${rs(c.rate)} = <b>${c.covered.toFixed(1)} units</b>.`);
+  steps.push(c.overUnits>0
+    ? `Units above that: ${c.units.toFixed(1)} − ${c.covered.toFixed(1)} = ${c.overUnits.toFixed(1)} units × ${rs(c.rate)} = <b>${rs(c.overValue)}</b>.`
+    : `${Math.round(c.units)} units is within the ${c.covered.toFixed(1)} units covered, so there is no extra charge for units.`);
+  if(s.addWheeling) steps.push(`KSEB charges the owner a wheeling charge for transferring solar units to your connection. This month it is <b>${rs(c.wheeling)}</b>${c.wSrc==="your KSEB bill"?` on the owner’s KSEB bill ${esc(c.m.owner.billNo)}`:c.wSrc==="estimate"?" (estimated at "+rs(s.wheelRate,4)+" per unit)":""}, passed on at actual cost.`);
+  if(s.addTenantBill) steps.push(`Your own KSEB bill (fixed charge and meter rent)${c.m.tenant?` ${esc(c.m.tenant.billNo)}`:""} paid by the owner: <b>${rs(c.tbill||0)}</b>.`);
+  const src=[];
+  if(c.m.tenant) src.push([`Your KSEB bill ${c.m.tenant.billNo}`, `${c.m.tenant.billDate||""}`, `${c.m.tenant.N+c.m.tenant.O+c.m.tenant.P} units`]);
+  if(c.m.owner) src.push([`Owner’s KSEB bill ${c.m.owner.billNo}`, `${c.m.owner.billDate||""}`, `Wheeling ${c.m.owner.wheeling!=null?rs(c.m.owner.wheeling):"—"}`]);
+  if(c.m.adj) src.push([`Consumption Adjustment Report`, label(k), `${c.m.adj.adjusted} units from solar`]);
+  return `<div class="stmt">
+    <h2>Electricity statement for ${esc(s.tenantName)}</h2>
+    <p class="meta">${longLabel(k)} KSEB bill, for usage in ${usage(k)}</p>
+    <h4>How this is calculated</h4>
+    <ol>${steps.map(x=>`<li>${x}</li>`).join("")}</ol>
+    <div class="sum">
+      <div class="row"><span>Monthly amount</span><span>${rs(c.fixed,0)}</span></div>
+      <div class="row"><span>Units above the limit</span><span>${rs(c.overValue)}</span></div>
+      ${s.addWheeling?`<div class="row"><span>Wheeling charge</span><span>${rs(c.wheeling)}</span></div>`:""}
+      ${s.addTenantBill?`<div class="row"><span>Your KSEB bill</span><span>${rs(c.tbill||0)}</span></div>`:""}
+      <div class="row"><span>Total to pay</span><span>${rs(c.total,0)}</span></div>
+    </div>
+    ${src.length?`<h4>Figures taken from</h4><div style="overflow-x:auto"><table><tbody>${src.map(r=>`<tr><td>${esc(r[0])}</td><td>${esc(r[1])}</td><td>${esc(r[2])}</td></tr>`).join("")}</tbody></table></div>`:""}
+    <p class="foot">Extra amount rounded to the nearest rupee. Copies of the KSEB bills are available on request.</p>
+  </div>`;
+}
+function statementText(k){
+  const s=state.settings, c=calc(k), z=c.zones;
+  const L=[`Electricity statement: ${longLabel(k)} bill (${usage(k)} usage)`,``];
+  if(z) L.push(`Your units used: ${z.N+z.O+z.P} (normal ${z.N}, off-peak ${z.O}, peak ${z.P})`);
+  L.push(`Units supplied from owner's solar: ${c.solar}`);
+  if(s.loss) L.push(`With KSEB 5% transfer loss: ${c.units.toFixed(1)} units`);
+  L.push(`Monthly ${rs(c.fixed,0)} covers: ${rs(c.fixed,0)} / ${rs(c.rate)} = ${c.covered.toFixed(1)} units`);
+  L.push(c.overUnits>0?`Units above limit: ${c.overUnits.toFixed(1)} x ${rs(c.rate)} = ${rs(c.overValue)}`:`Units above limit: none`);
+  if(s.addWheeling) L.push(`KSEB wheeling charge (owner's bill): ${rs(c.wheeling)}`);
+  if(s.addTenantBill) L.push(`Your KSEB bill: ${rs(c.tbill||0)}`);
+  L.push(``,`Monthly amount: ${rs(c.fixed,0)}`,`Extra amount: ${rs(c.extra,0)}`,`Total to pay: ${rs(c.total,0)}`);
+  return L.join("\n");
+}
+
+/* ---------- events ---------- */
+const drop=$("drop");
+$("fileIn").addEventListener("change",e=>{ handleFiles(e.target.files); e.target.value=""; });
+drop.addEventListener("keydown",e=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); $("fileIn").click(); } });
+["dragenter","dragover"].forEach(ev=>drop.addEventListener(ev,e=>{ e.preventDefault(); drop.classList.add("over"); }));
+["dragleave","drop"].forEach(ev=>drop.addEventListener(ev,e=>{ e.preventDefault(); drop.classList.remove("over"); }));
+drop.addEventListener("drop",e=>handleFiles(e.dataTransfer.files));
+
+const bind=(id,key,isNum)=>$(id).addEventListener("input",()=>{ const v=$(id).value; state.settings[key]=isNum?(+v||0):v.trim(); save(); render(); });
+bind("sFixed","fixed",true); bind("sRate","rate",true); bind("sWheel","wheelRate",true); bind("sName","tenantName",false);
+$("sOwner").addEventListener("change",()=>{ state.settings.ownerNo=$("sOwner").value.trim(); save(); render(); });
+$("sTenant").addEventListener("change",()=>{ state.settings.tenantNo=$("sTenant").value.trim(); save(); render(); });
+[["sAddWheel","addWheeling"],["sLoss","loss"],["sTenantBill","addTenantBill"]].forEach(([id,k])=>$(id).addEventListener("change",e=>{ state.settings[k]=e.target.checked; save(); render(); }));
+$("monthPick").addEventListener("change",e=>{ selected=e.target.value; render(); });
+
+$("btnEdit").addEventListener("click",()=>{
+  const man=(state.months[selected].manual)||{};
+  $("eTitle").textContent="Correct figures for "+label(selected);
+  $("eUnits").value=man.units??""; $("eBilled").value=man.billed??""; $("eWheel").value=man.wheeling??""; $("eTBill").value=man.tbill??"";
+  const r=resolve(selected);
+  $("eUnits").placeholder=r.m.adj?r.m.adj.adjusted:(r.solar??""); $("eWheel").placeholder=r.m.owner&&r.m.owner.wheeling!=null?r.m.owner.wheeling:"";
+  $("eBilled").placeholder=r.m.adj?r.m.adj.billed:"0"; $("eTBill").placeholder=r.m.tenant&&r.m.tenant.total!=null?r.m.tenant.total:"";
+  $("editDlg").showModal();
+});
+$("eCancel").addEventListener("click",()=>$("editDlg").close());
+$("editForm").addEventListener("submit",()=>{
+  state.months[selected].manual={units:num($("eUnits").value),billed:num($("eBilled").value),wheeling:num($("eWheel").value),tbill:num($("eTBill").value)};
+  save(); render();
+});
+
+$("btnStmt").addEventListener("click",()=>{
+  $("stmtBody").innerHTML=statementHTML(selected);
+  $("sShare").hidden=!navigator.share;
+  $("sCopy").textContent="Copy as text";
+  $("stmtDlg").showModal();
+});
+$("sClose").addEventListener("click",()=>$("stmtDlg").close());
+$("sCopy").addEventListener("click",async()=>{
+  try{ await navigator.clipboard.writeText(statementText(selected)); $("sCopy").textContent="Copied"; }
+  catch(e){ $("sCopy").textContent="Copy blocked by browser"; }
+});
+$("sShare").addEventListener("click",()=>{ navigator.share({title:"Electricity statement "+label(selected), text:statementText(selected)}).catch(()=>{}); });
+$("sPrint").addEventListener("click",()=>{
+  $("printArea").innerHTML=statementHTML(selected);
+  $("stmtDlg").close();
+  setTimeout(()=>window.print(),50);
+});
+
+$("btnExport").addEventListener("click",()=>{
+  const blob=new Blob([JSON.stringify(state,null,2)],{type:"application/json"});
+  const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="tenant-solar-backup.json"; a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+});
+$("btnImport").addEventListener("click",()=>$("impIn").click());
+$("impIn").addEventListener("change",async e=>{
+  const f=e.target.files[0]; e.target.value=""; if(!f) return;
+  try{ const d=JSON.parse(await f.text()); if(!d.months) throw 0; state={settings:{...DEFAULTS,...(d.settings||{})},months:d.months}; selected=null; save(); render(); $("log").innerHTML=""; logLine("Backup restored.",true); }
+  catch(_){ $("log").innerHTML=""; logLine("That file is not a backup from this app.",false); }
+});
+$("btnClear").addEventListener("click",()=>{
+  if(!confirm("Delete all months and settings saved on this device?")) return;
+  state={settings:{...DEFAULTS},months:{}}; selected=null; save(); $("log").innerHTML=""; render();
+});
+
+if(window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+load(); render();
+})();
+</script>
+</body></html>
